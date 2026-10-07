@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/* Tokens do tema (paleta do portfólio). Os componentes usam bg-surface, text-muted, border-line... */
+:root {
+  --bg: #faf6f3;
+  --surface: #ffffff;
+  --surface-2: #f3ece8;
+  --line: #ddd0c9;
+  --text: #211112;
+  --muted: #5f4c50;
+  --accent: #7d1690;
+  --accent-strong: #4c0657;
+  --focus: #6b4928;
+  --danger: #b3261e;
+  --warn: #8a5a00;
+  --ok: #1d7a46;
+  --p-critica: #c21f3a;
+  --p-alta: #b85400;
+  --p-media: #8a6d00;
+  --p-baixa: #1f5fae;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #120d12;
+    --surface: #1c151c;
+    --surface-2: #261d26;
+    --line: #3a2d3a;
+    --text: #f3e9e4;
+    --muted: #b9a9b3;
+    --accent: #d38ae0;
+    --accent-strong: #9b1eac;
+    --focus: #efccaf;
+    --danger: #ff8a80;
+    --warn: #f5c451;
+    --ok: #7fd1a0;
+    --p-critica: #ff5d6c;
+    --p-alta: #ff9f43;
+    --p-media: #f5d547;
+    --p-baixa: #6fb7ff;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --color-p-critica: var(--p-critica);
+  --color-p-alta: var(--p-alta);
+  --color-p-media: var(--p-media);
+  --color-p-baixa: var(--p-baixa);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .card { @apply rounded-xl border border-line bg-surface; }
+  .btn {
+    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-line bg-surface-2 px-3 text-sm font-medium
+      hover:border-accent disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary { @apply border-accent-strong bg-accent-strong text-white hover:brightness-110; }
+  .field {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm
+      aria-invalid:border-danger;
+  }
+  .label { @apply mb-1 block text-sm font-medium; }
+  .error-text { @apply mt-1 text-sm text-danger; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
