@@ -4,6 +4,8 @@ Front-end em **Next.js 16 + TypeScript** para a minha [API de Chamados em PHP](h
 
 Pelo portal, o solicitante abre e acompanha os próprios chamados, e a equipe de atendimento trabalha a fila: assume os chamados, muda o status, comenta (inclusive com comentários internos) e acompanha o SLA e os indicadores.
 
+**Demo:** [portal-chamados-swart.vercel.app](https://portal-chamados-swart.vercel.app/) (entre com `bruno@exemplo.com` / `senha-demo-123`)
+
 Sem a API configurada, o portal roda em **modo demonstração**, com dados fictícios em memória, e pode ser publicado sozinho na Vercel.
 
 <p>
