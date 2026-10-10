@@ -44,7 +44,7 @@ src/
     api/http.ts            cliente da API real: token, timeout e normalização de erros
     api/demo.ts            mesma interface, em memória, com as regras da API portadas
     server/session.ts      cookie httpOnly + "data access layer" (getSession/requireSession)
-    calendar.ts priority.ts filters.ts labels.ts
+    calendar.ts priority.ts filters.ts labels.ts redirect.ts
 tests/
   unit/                    Vitest + Testing Library
   e2e/                     Playwright contra o build de produção (modo demonstração)
@@ -61,7 +61,8 @@ tests/
 - **Tratamento de erros central.** Todo request passa por um único método, que faz o papel de interceptor. Ele põe o token, aplica timeout e converte respostas de erro (inclusive falha de rede ou HTML de proxy) em `ApiError`. Um 401 em qualquer ação limpa a sessão e manda para o login com "sua sessão expirou".
 - **Cache Components (Next 16).** O layout e os textos fixos saem pré-renderizados. O que depende do usuário (cookie) ou da URL (`searchParams`) roda dentro de `<Suspense>` e chega por streaming. Os dados da API não são cacheados, porque mudam a toda hora; depois de uma ação, `refresh()` re-renderiza a página.
 - **URL como estado dos filtros.** Os filtros são um formulário GET (`next/form`), então o voltar do navegador funciona e o link pode ser compartilhado. Valores inválidos na URL são ignorados em vez de quebrar a página.
-- **Segurança no login.** O parâmetro `voltar` só aceita caminhos internos, o que evita open redirect. O proxy só confere se o cookie existe; quem valida o token de verdade é a API, a cada request.
+- **Segurança no login.** O parâmetro `voltar` só aceita caminhos internos, o que evita open redirect. Não basta conferir se começa com `/`: o navegador trata `\` como `/` e ignora TAB e quebra de linha (`/\site.com` vira `//site.com`), então o caminho passa pelo mesmo parser de URL do navegador e só é aceito se continuar no site (`lib/redirect.ts`). O proxy só confere se o cookie existe; quem valida o token de verdade é a API, a cada request.
+- **Cabeçalhos de segurança** (`next.config.ts`): CSP, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` e HSTS. A CSP não usa nonce porque o portal usa Partial Prerendering (o shell estático é gerado no build, sem request), então `script-src` mantém `'unsafe-inline'` para os scripts do Next; o resto (imagens, estilos, conexões, formulários, iframes) fica preso ao próprio site.
 
 ## Rodando
 
@@ -87,12 +88,12 @@ CHAMADOS_API_URL=http://localhost:8080 npm run dev
 ## Testes
 
 ```bash
-npm test             # 34 testes de unidade e componente (Vitest + Testing Library)
-npm run test:e2e     # 6 fluxos de ponta a ponta (Playwright, no build de produção)
+npm test             # 47 testes de unidade e componente (Vitest + Testing Library)
+npm run test:e2e     # 8 testes de ponta a ponta (Playwright, no build de produção)
 npm run lint && npm run typecheck
 ```
 
-- **Unidade:** calendário útil (os mesmos casos da API em PHP), matriz de prioridade, leitura dos filtros da URL, cliente HTTP (token, query, erros 401/422/503, resposta sem JSON) e as regras do modo demonstração.
+- **Unidade:** calendário útil (os mesmos casos da API em PHP), matriz de prioridade, leitura dos filtros da URL, "voltar" do login contra open redirect, cliente HTTP (token, query, erros 401/422/503, resposta sem JSON) e as regras do modo demonstração.
 - **Componentes:** prévia da prioridade no formulário, nota obrigatória conforme o status e indicador de SLA.
 - **E2E:**
   - login inválido;
@@ -101,6 +102,8 @@ npm run lint && npm run typecheck
   - comentário interno invisível para o solicitante;
   - filtros na URL e indicadores;
   - redirecionamento depois do login e sessão inválida.
+  - `voltar` malicioso no login não sai do site;
+  - cabeçalhos de segurança nas respostas.
 
 O CI roda lint, typecheck, testes, build e o Playwright a cada push.
 

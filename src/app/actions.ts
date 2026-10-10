@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { ApiError } from "@/lib/api/contract";
 import { backend } from "@/lib/server/backend";
+import { safeReturn } from "@/lib/redirect";
 import { clearSession, requireSession, saveSession } from "@/lib/server/session";
 import { CATEGORIES, LEVELS, STATUSES } from "@/lib/types";
 
@@ -29,9 +30,6 @@ async function fail(e: unknown, fd: FormData): Promise<FormState> {
   }
   throw e;
 }
-
-/** Só aceita caminhos internos no "voltar" (evita open redirect para outro site). */
-const safeReturn = (path: string | undefined) => (path && /^\/(?!\/)/.test(path) ? path : "/chamados");
 
 const loginSchema = z.object({
   email: z.email("Informe um email válido"),

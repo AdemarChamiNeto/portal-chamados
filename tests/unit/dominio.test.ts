@@ -3,6 +3,7 @@ import { BusinessCalendar } from "@/lib/calendar";
 import { parseFilters, withPage } from "@/lib/filters";
 import { formatMinutes } from "@/lib/labels";
 import { priorityFromMatrix } from "@/lib/priority";
+import { safeReturn } from "@/lib/redirect";
 
 // horário de São Paulo (UTC−3) → Date
 const sp = (s: string) => new Date(`${s}:00-03:00`);
@@ -65,5 +66,33 @@ describe("filtros da URL", () => {
 describe("formatMinutes", () => {
   it.each([[0, "0 min"], [45, "45 min"], [75, "1 h 15 min"], [540, "1 dia útil"], [1125, "2 dias úteis 45 min"], [-60, "1 h"]])("%i → %s", (m, s) => {
     expect(formatMinutes(m)).toBe(s);
+  });
+});
+
+describe("safeReturn (voltar do login)", () => {
+  it.each([
+    ["/chamados/12", "/chamados/12"],
+    ["/chamados?status=abertos&page=2", "/chamados?status=abertos&page=2"],
+    ["/indicadores#sla", "/indicadores#sla"],
+  ])("aceita caminho interno %s", (path, expected) => {
+    expect(safeReturn(path)).toBe(expected);
+  });
+
+  it.each([
+    undefined,
+    "",
+    "chamados",
+    "https://site-falso.com",
+    "javascript:alert(1)",
+    "//site-falso.com",
+    "/\\site-falso.com", // o navegador trata "\" como "/"
+    "/\t/site-falso.com", // e ignora TAB e quebra de linha
+    "/\n/site-falso.com",
+  ])("recusa %j e volta para /chamados", (path) => {
+    expect(safeReturn(path)).toBe("/chamados");
+  });
+
+  it("caminho codificado continua no mesmo site", () => {
+    expect(safeReturn("/%5Csite-falso.com")).toBe("/%5Csite-falso.com");
   });
 });

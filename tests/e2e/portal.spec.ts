@@ -102,3 +102,22 @@ test("volta para a página pedida depois do login; sessão inválida pede login 
   await expect(page).toHaveURL(/\/login\?expirou=1/);
   await expect(page.getByRole("status").filter({ hasText: "Sua sessão expirou" })).toBeVisible();
 });
+
+test("voltar malicioso no login não leva para outro site", async ({ page }) => {
+  await page.goto("/login?voltar=" + encodeURIComponent(String.raw`/\site-falso.example`));
+  await page.getByLabel("Email").fill("bruno@exemplo.com");
+  await page.getByLabel("Senha").fill("senha-demo-123");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByRole("heading", { name: "Chamados", level: 1 })).toBeVisible();
+  expect(new URL(page.url()).host).toBe(`localhost:3210`);
+});
+
+test("respostas trazem os cabeçalhos de segurança", async ({ request }) => {
+  const res = await request.get("/login");
+  const h = res.headers();
+  expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(h["content-security-policy"]).toContain("object-src 'none'");
+  expect(h["x-content-type-options"]).toBe("nosniff");
+  expect(h["x-frame-options"]).toBe("DENY");
+  expect(h["x-powered-by"]).toBeUndefined();
+});
