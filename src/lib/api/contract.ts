@@ -17,10 +17,21 @@ export class ApiError extends Error {
   }
 }
 
+/** Sem 2FA, o login já abre a sessão; com 2FA, devolve um token pendente (5 min) que só serve para o segundo passo. */
+export type LoginResult =
+  | { twoFactorRequired: false; token: string; user: User }
+  | { twoFactorRequired: true; pendingToken: string };
+
 /** Operações que as telas usam. Implementado pelo cliente HTTP (API real) e pelo modo demonstração. */
 export interface ChamadosApi {
-  login(email: string, password: string): Promise<{ token: string; user: User }>;
+  login(email: string, password: string): Promise<LoginResult>;
+  /** Segundo passo do login: código de 6 dígitos do app ou um código de recuperação. */
+  loginSecondFactor(pendingToken: string, code: string): Promise<{ token: string; user: User; recoveryCodesLeft: number }>;
   me(): Promise<User>;
+  twoFactorStatus(): Promise<{ enabled: boolean }>;
+  setupTwoFactor(): Promise<{ secret: string; otpauthUrl: string }>;
+  enableTwoFactor(code: string): Promise<{ recoveryCodes: string[] }>;
+  disableTwoFactor(password: string, code: string): Promise<void>;
   listTickets(filters: TicketFilters): Promise<Page<Ticket>>;
   getTicket(id: number): Promise<TicketDetail>;
   createTicket(input: NewTicket): Promise<TicketDetail>;

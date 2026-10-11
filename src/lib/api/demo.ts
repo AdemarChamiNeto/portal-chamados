@@ -5,7 +5,36 @@ import {
   type Comment, type HistoryEntry, type Metrics, type NewTicket, type Page, type Priority, type Role,
   type Status, type Ticket, type TicketDetail, type TicketFilters, type User,
 } from "../types";
-import { ApiError, type ChamadosApi } from "./contract";
+import crypto from "node:crypto";
+import { generateRecoveryCodes, generateSecret, hashRecoveryCode, otpauthUrl, verifyCode } from "../totp";
+import { ApiError, type ChamadosApi, type LoginResult } from "./contract";
+
+// ---- tokens da demo: "demo.<propósito>.<id>.<expira>.<HMAC>", assinados com uma chave aleatória do processo ----
+type Purpose = "session" | "2fa";
+const g = globalThis as unknown as { __demoKey?: Buffer };
+const sign = (payload: string) => crypto.createHmac("sha256", (g.__demoKey ??= crypto.randomBytes(32))).update(payload).digest("base64url");
+
+export function demoToken(userId: number, purpose: Purpose = "session", ttlMs = 8 * 3_600_000, now = Date.now()) {
+  const payload = `${purpose}.${userId}.${now + ttlMs}`;
+  return `demo.${payload}.${sign(payload)}`;
+}
+
+/** Id do usuário de um token da demo com o propósito pedido; null se inválido, adulterado ou vencido. */
+export function readDemoToken(token: string, purpose: Purpose, now = Date.now()): number | null {
+  const m = /^demo\.(session|2fa)\.(\d+)\.(\d+)\.([\w-]+)$/.exec(token);
+  if (!m || m[1] !== purpose || Number(m[3]) <= now) return null;
+  const expected = Buffer.from(sign(`${m[1]}.${m[2]}.${m[3]}`));
+  const given = Buffer.from(m[4]);
+  return expected.length === given.length && crypto.timingSafeEqual(expected, given) ? Number(m[2]) : null;
+}
+
+interface DemoTotp {
+  secret: string;
+  enabled: boolean;
+  lastStep: number | null;
+  /** hash do código de recuperação → já usado? */
+  recovery: Map<string, boolean>;
+}
 
 /**
  * Modo demonstração: uma cópia em memória das regras da API em PHP (prioridade ITIL, SLA em horário comercial,
@@ -66,6 +95,8 @@ export class DemoStore {
   rows: Row[] = [];
   nextId = 1;
   readonly calendar = new BusinessCalendar();
+  /** 2FA por usuário (em memória, como o resto da demo). */
+  readonly totp = new Map<number, DemoTotp>();
 
   constructor(public now: () => Date = () => new Date()) {}
 
@@ -149,14 +180,77 @@ export class DemoChamadosApi implements ChamadosApi {
     return r;
   }
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string): Promise<LoginResult> {
     const user = DEMO_USERS.find((u) => u.email === email.trim().toLowerCase());
     if (!user || password !== DEMO_PASSWORD) throw new ApiError(401, "invalid_credentials", "Email ou senha incorretos");
-    return { token: `demo.${user.id}`, user };
+    if (this.store.totp.get(user.id)?.enabled) {
+      return { twoFactorRequired: true, pendingToken: demoToken(user.id, "2fa", 5 * 60_000) };
+    }
+    return { twoFactorRequired: false, token: demoToken(user.id), user };
+  }
+
+  async loginSecondFactor(pendingToken: string, code: string) {
+    const id = readDemoToken(pendingToken, "2fa");
+    if (id === null) throw new ApiError(401, "invalid_token", "Faça o login de novo");
+    if (!this.checkSecondFactor(id, code)) throw new ApiError(401, "invalid_code", "Código inválido");
+    const t = this.store.totp.get(id)!;
+    const left = [...t.recovery.values()].filter((used) => !used).length;
+    return { token: demoToken(id), user: this.store.user(id), recoveryCodesLeft: left };
+  }
+
+  /** Mesmas regras da API: código do app não reutilizável, código de recuperação de uso único. */
+  private checkSecondFactor(userId: number, code: string): boolean {
+    const t = this.store.totp.get(userId);
+    if (!t?.enabled) return false;
+    const c = code.trim();
+    if (/^\d{6}$/.test(c)) {
+      const step = verifyCode(t.secret, c, new Date(), t.lastStep);
+      if (step === null) return false;
+      t.lastStep = step;
+      return true;
+    }
+    const hash = hashRecoveryCode(c);
+    if (t.recovery.get(hash) !== false) return false;
+    t.recovery.set(hash, true);
+    return true;
   }
 
   async me() {
     return this.me_();
+  }
+
+  async twoFactorStatus() {
+    return { enabled: !!this.store.totp.get(this.me_().id)?.enabled };
+  }
+
+  async setupTwoFactor() {
+    const user = this.me_();
+    if (this.store.totp.get(user.id)?.enabled) throw new ApiError(409, "already_enabled", "O 2FA já está ativo");
+    const secret = generateSecret();
+    this.store.totp.set(user.id, { secret, enabled: false, lastStep: null, recovery: new Map() });
+    return { secret, otpauthUrl: otpauthUrl(secret, user.email) };
+  }
+
+  async enableTwoFactor(code: string) {
+    const user = this.me_();
+    const t = this.store.totp.get(user.id);
+    if (!t) throw new ApiError(409, "no_setup", "Gere o QR code primeiro");
+    if (t.enabled) throw new ApiError(409, "already_enabled", "O 2FA já está ativo");
+    const step = verifyCode(t.secret, code.trim(), new Date());
+    if (step === null) {
+      throw new ApiError(422, "validation_error", "Dados inválidos", { code: "Código inválido. Confira o horário do celular e tente de novo." });
+    }
+    const codes = generateRecoveryCodes();
+    Object.assign(t, { enabled: true, lastStep: step, recovery: new Map(codes.map((c) => [hashRecoveryCode(c), false])) });
+    return { recoveryCodes: codes };
+  }
+
+  async disableTwoFactor(password: string, code: string) {
+    const user = this.me_();
+    if (password !== DEMO_PASSWORD || !this.checkSecondFactor(user.id, code)) {
+      throw new ApiError(401, "invalid_credentials", "Senha ou código incorretos");
+    }
+    this.store.totp.delete(user.id);
   }
 
   async listTickets(f: TicketFilters): Promise<Page<Ticket>> {

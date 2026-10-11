@@ -1,6 +1,6 @@
 import "server-only";
 import { connection } from "next/server";
-import { DemoChamadosApi, DemoStore, seedDemo } from "../api/demo";
+import { DemoChamadosApi, DemoStore, readDemoToken, seedDemo } from "../api/demo";
 import { HttpChamadosApi } from "../api/http";
 import type { ChamadosApi } from "../api/contract";
 
@@ -26,6 +26,7 @@ export async function backend(token: string | null): Promise<ChamadosApi> {
   await connection();
   const url = apiUrl();
   if (url) return new HttpChamadosApi(url, token);
-  const id = token?.startsWith("demo.") ? Number(token.slice(5)) : null;
-  return new DemoChamadosApi(await demoStore(), Number.isInteger(id) ? id : null);
+  // token da demo assinado (HMAC): não dá para virar outro usuário editando o cookie
+  const id = token ? readDemoToken(token, "session") : null;
+  return new DemoChamadosApi(await demoStore(), id);
 }

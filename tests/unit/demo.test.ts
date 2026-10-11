@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/contract";
-import { DemoChamadosApi, DemoStore, seedDemo } from "@/lib/api/demo";
+import { DemoChamadosApi, DemoStore, demoToken, readDemoToken, seedDemo } from "@/lib/api/demo";
+import { codeForStep, stepAt } from "@/lib/totp";
 
 // quarta-feira, 09:00 em São Paulo
 let now: Date;
@@ -81,7 +82,52 @@ describe("modo demonstração segue as regras da API", () => {
   it("login de demonstração", async () => {
     const anon = new DemoChamadosApi(store);
     await expect(anon.login("bruno@exemplo.com", "errada")).rejects.toMatchObject({ status: 401 });
-    expect((await anon.login(" BRUNO@exemplo.com", "senha-demo-123")).token).toBe("demo.2");
+    const r = await anon.login(" BRUNO@exemplo.com", "senha-demo-123");
+    expect(r.twoFactorRequired).toBe(false);
+    expect(r.twoFactorRequired === false && readDemoToken(r.token, "session")).toBe(2);
     await expect(anon.me()).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe("tokens da demo são assinados", () => {
+  it("não dá para forjar, adulterar ou usar vencido", () => {
+    const t = demoToken(2);
+    expect(readDemoToken(t, "session")).toBe(2);
+    expect(readDemoToken("demo.2", "session")).toBeNull(); // formato antigo, sem assinatura
+    expect(readDemoToken(t.replace("session.2.", "session.1."), "session")).toBeNull(); // virar o admin
+    expect(readDemoToken(t, "2fa")).toBeNull(); // propósito trocado
+    expect(readDemoToken(demoToken(2, "session", 1000, 0), "session")).toBeNull(); // vencido
+  });
+});
+
+describe("2FA na demonstração (mesmas regras da API)", () => {
+  const code = (secret: string, offset = 0) => codeForStep(secret, stepAt(new Date()) + offset);
+
+  it("ativar, login em dois passos, código não reutilizável, recuperação de uso único e desativar", async () => {
+    const bruno = as(2);
+    expect(await bruno.twoFactorStatus()).toEqual({ enabled: false });
+    const { secret, otpauthUrl } = await bruno.setupTwoFactor();
+    expect(otpauthUrl).toMatch(/^otpauth:\/\/totp\/Portal%20de%20Chamados/);
+    await expect(bruno.enableTwoFactor("000000")).rejects.toMatchObject({ status: 422 });
+    const { recoveryCodes } = await bruno.enableTwoFactor(code(secret));
+    expect(recoveryCodes).toHaveLength(10);
+
+    const anon = new DemoChamadosApi(store);
+    const login = await anon.login("bruno@exemplo.com", "senha-demo-123");
+    if (!login.twoFactorRequired) throw new Error("devia pedir o 2FA");
+    expect(readDemoToken(login.pendingToken, "session")).toBeNull(); // token pendente não é sessão
+
+    await expect(anon.loginSecondFactor(login.pendingToken, "000000")).rejects.toMatchObject({ status: 401 });
+    await expect(anon.loginSecondFactor(login.pendingToken, code(secret))).rejects.toMatchObject({ status: 401 }); // já usado
+    const ok = await anon.loginSecondFactor(login.pendingToken, code(secret, 1));
+    expect(readDemoToken(ok.token, "session")).toBe(2);
+
+    const rec = await anon.loginSecondFactor(login.pendingToken, recoveryCodes[0].toUpperCase());
+    expect(rec.recoveryCodesLeft).toBe(9);
+    await expect(anon.loginSecondFactor(login.pendingToken, recoveryCodes[0])).rejects.toMatchObject({ status: 401 });
+
+    await expect(bruno.disableTwoFactor("errada", recoveryCodes[1])).rejects.toMatchObject({ status: 401 });
+    await bruno.disableTwoFactor("senha-demo-123", recoveryCodes[2]);
+    expect((await anon.login("bruno@exemplo.com", "senha-demo-123")).twoFactorRequired).toBe(false);
   });
 });

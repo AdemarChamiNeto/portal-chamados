@@ -14,6 +14,7 @@ export async function UserMenu() {
       {isDemo() && <span className="rounded-full border border-warn px-2 py-0.5 text-xs text-warn">modo demonstração</span>}
       <Link href="/chamados" className="hover:underline">Chamados</Link>
       {isStaff(user.role) && <Link href="/indicadores" className="hover:underline">Indicadores</Link>}
+      <Link href="/conta" className="hover:underline">Minha conta</Link>
       <span className="text-muted">
         {user.name} · {ROLE_LABEL[user.role]}
       </span>

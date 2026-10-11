@@ -18,6 +18,8 @@ Sem a API configurada, o portal roda em **modo demonstração**, com dados fict�
 ## Funcionalidades
 
 - **Login** com o token da API guardado num cookie **httpOnly**. O JavaScript do navegador não tem acesso ao token, e todas as chamadas à API saem do servidor do Next.
+- **Verificação em duas etapas (opcional):** em "Minha conta", o usuário lê um QR code no app autenticador e recebe 10 códigos de recuperação. Depois disso o login pede o código, numa segunda tela.
+- **Freio contra força bruta:** depois de 5 erros de login ou de código em 15 min, o IP do usuário espera.
 - **Fila de chamados:**
   - filtros por status, prioridade, categoria, responsável ("meus", "sem responsável") e "só atrasados";
   - busca, ordenação e paginação;
@@ -37,13 +39,15 @@ Sem a API configurada, o portal roda em **modo demonstração**, com dados fict�
 src/
   proxy.ts                 checagem otimista: sem cookie de sessão → /login?voltar=...
   app/
-    actions.ts             Server Actions: login, logout, abrir, mudar status, comentar, assumir
-    login/  chamados/  chamados/[id]/  chamados/novo/  indicadores/
+    actions.ts             Server Actions: login (+ código do 2FA), logout, 2FA, abrir, mudar status, comentar, assumir
+    login/  login/codigo/  conta/  chamados/  chamados/[id]/  chamados/novo/  indicadores/
   lib/
     api/contract.ts        interface ChamadosApi + ApiError (formato de erro da API)
     api/http.ts            cliente da API real: token, timeout e normalização de erros
     api/demo.ts            mesma interface, em memória, com as regras da API portadas
-    server/session.ts      cookie httpOnly + "data access layer" (getSession/requireSession)
+    server/session.ts      cookie httpOnly + "data access layer" (getSession/requireSession) + cookie do 2FA pendente
+    server/rateLimit.ts    freio por IP do usuário no login e no código do 2FA
+    totp.ts                TOTP (RFC 6238) para o modo demonstração
     calendar.ts priority.ts filters.ts labels.ts redirect.ts
 tests/
   unit/                    Vitest + Testing Library
@@ -63,6 +67,16 @@ tests/
 - **URL como estado dos filtros.** Os filtros são um formulário GET (`next/form`), então o voltar do navegador funciona e o link pode ser compartilhado. Valores inválidos na URL são ignorados em vez de quebrar a página.
 - **Segurança no login.** O parâmetro `voltar` só aceita caminhos internos, o que evita open redirect. Não basta conferir se começa com `/`: o navegador trata `\` como `/` e ignora TAB e quebra de linha (`/\site.com` vira `//site.com`), então o caminho passa pelo mesmo parser de URL do navegador e só é aceito se continuar no site (`lib/redirect.ts`). O proxy só confere se o cookie existe; quem valida o token de verdade é a API, a cada request.
 - **Cabeçalhos de segurança** (`next.config.ts`): CSP, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` e HSTS. A CSP não usa nonce porque o portal usa Partial Prerendering (o shell estático é gerado no build, sem request), então `script-src` mantém `'unsafe-inline'` para os scripts do Next; o resto (imagens, estilos, conexões, formulários, iframes) fica preso ao próprio site.
+- **2FA no BFF:**
+  - depois da senha certa, a API devolve um token pendente de 5 min, que fica num cookie httpOnly próprio e só serve para o segundo passo;
+  - o QR code é gerado no servidor (imagem `data:`, permitida pela CSP).
+- **Rate limit em duas camadas.**
+  - A API limita por usuário, com contador no banco. Atrás do portal, ela só enxerga o IP deste servidor.
+  - Por isso o limite por IP de quem está no navegador fica aqui, no login e no código do 2FA. O contador é em memória: na Vercel cada instância tem o seu, então é uma camada extra, não a única.
+- **Modo demonstração honesto.**
+  - Os tokens da demo são assinados com HMAC (chave aleatória do processo): editar o cookie não transforma ninguém em admin.
+  - O 2FA da demo segue as mesmas regras da API (código não reutilizável, recuperação de uso único) e tem teste.
+- **Voltar depois do login mesmo sem JavaScript carregado.** O campo `voltar` é renderizado no navegador. Se o formulário for enviado antes disso, a action lê o `?voltar=` da página de login (`Referer`), sempre passando pelo `safeReturn`.
 
 ## Rodando
 
@@ -88,8 +102,8 @@ CHAMADOS_API_URL=http://localhost:8080 npm run dev
 ## Testes
 
 ```bash
-npm test             # 47 testes de unidade e componente (Vitest + Testing Library)
-npm run test:e2e     # 8 testes de ponta a ponta (Playwright, no build de produção)
+npm test             # 50 testes de unidade e componente (Vitest + Testing Library)
+npm run test:e2e     # 9 testes de ponta a ponta (Playwright, no build de produção)
 npm run lint && npm run typecheck
 ```
 
@@ -104,6 +118,7 @@ npm run lint && npm run typecheck
   - redirecionamento depois do login e sessão inválida.
   - `voltar` malicioso no login não sai do site;
   - cabeçalhos de segurança nas respostas.
+  - 2FA: ativar em "Minha conta", sair e entrar com o código (código errado é recusado).
 
 O CI roda lint, typecheck, testes, build e o Playwright a cada push.
 

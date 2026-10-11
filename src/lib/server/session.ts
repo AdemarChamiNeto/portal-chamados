@@ -27,6 +27,27 @@ export async function clearSession() {
   (await cookies()).delete(SESSION_COOKIE);
 }
 
+/** Entre a senha certa e o código do 2FA: token pendente (5 min) que a API só aceita no segundo passo. */
+export const PENDING_2FA_COOKIE = "chamados_2fa";
+
+export async function savePending2fa(pendingToken: string) {
+  (await cookies()).set(PENDING_2FA_COOKIE, pendingToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 5 * 60,
+  });
+}
+
+export async function readPending2fa() {
+  return (await cookies()).get(PENDING_2FA_COOKIE)?.value ?? null;
+}
+
+export async function clearPending2fa() {
+  (await cookies()).delete(PENDING_2FA_COOKIE);
+}
+
 export interface Session {
   user: User;
   api: ChamadosApi;

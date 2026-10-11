@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { codeForStep, stepAt } from "../../src/lib/totp";
 
 // Com Cache Components, a rota anterior fica no DOM escondida (<Activity>); por isso os seletores usam
 // getByRole, que ignora elementos invisíveis (getByLabel/getByText achariam os dois).
@@ -120,4 +121,35 @@ test("respostas trazem os cabeçalhos de segurança", async ({ request }) => {
   expect(h["x-content-type-options"]).toBe("nosniff");
   expect(h["x-frame-options"]).toBe("DENY");
   expect(h["x-powered-by"]).toBeUndefined();
+});
+
+test("2FA: ativar em Minha conta, sair e entrar com o código", async ({ page }) => {
+  await entrar(page, "elisa@exemplo.com");
+  await page.getByRole("link", { name: "Minha conta" }).click();
+  await page.getByRole("button", { name: "Ativar verificação em duas etapas" }).click();
+  await expect(page.getByRole("img", { name: "QR code para o app autenticador" })).toBeVisible();
+  const secret = (await page.locator("code").first().textContent())!.replace(/\s/g, "");
+
+  // faz o papel do app autenticador
+  const step = stepAt(new Date());
+  await page.getByRole("textbox", { name: /Digite o código de 6 dígitos/ }).fill(codeForStep(secret, step));
+  await page.getByRole("button", { name: "Confirmar e ativar" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "ativada" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Códigos de recuperação" }).getByRole("listitem")).toHaveCount(10);
+
+  await page.getByRole("button", { name: "Sair" }).click();
+  await expect(page).toHaveURL(/\/login/); // espera o logout terminar antes de navegar
+  await page.goto("/chamados");
+  await page.getByLabel("Email").fill("elisa@exemplo.com");
+  await page.getByLabel("Senha").fill("senha-demo-123");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/login\/codigo/);
+
+  await page.getByRole("textbox", { name: "Código" }).fill("000000");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Código inválido" })).toBeVisible();
+
+  await page.getByRole("textbox", { name: "Código" }).fill(codeForStep(secret, step + 1));
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByRole("heading", { name: "Chamados", level: 1 })).toBeVisible();
 });

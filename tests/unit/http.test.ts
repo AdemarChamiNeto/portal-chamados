@@ -28,6 +28,20 @@ describe("HttpChamadosApi", () => {
     expect(err.isUnauthorized).toBe(true);
   });
 
+  it("login com e sem 2FA, no formato da API", async () => {
+    const semFetch = vi.fn().mockResolvedValue(json(200, { two_factor_required: false, token: "t1", user: { id: 2 } }));
+    expect(await new HttpChamadosApi("http://api.local", null, semFetch).login("a@b.com", "x")).toEqual({ twoFactorRequired: false, token: "t1", user: { id: 2 } });
+
+    const comFetch = vi.fn().mockResolvedValue(json(200, { two_factor_required: true, pending_token: "p1" }));
+    expect(await new HttpChamadosApi("http://api.local", null, comFetch).login("a@b.com", "x")).toEqual({ twoFactorRequired: true, pendingToken: "p1" });
+
+    const segundo = vi.fn().mockResolvedValue(json(200, { token: "t2", user: { id: 2 }, recovery_codes_left: 9 }));
+    expect(await new HttpChamadosApi("http://api.local", null, segundo).loginSecondFactor("p1", "123456")).toEqual({ token: "t2", user: { id: 2 }, recoveryCodesLeft: 9 });
+    const [url, init] = segundo.mock.calls[0];
+    expect(String(url)).toBe("http://api.local/api/auth/2fa");
+    expect(JSON.parse(init.body)).toEqual({ pending_token: "p1", code: "123456" });
+  });
+
   it("falha de rede e resposta sem JSON viram erros legíveis", async () => {
     const offline = await new HttpChamadosApi("http://api.local", null, vi.fn().mockRejectedValue(new TypeError("fetch failed"))).me().catch((e) => e);
     expect(offline).toMatchObject({ status: 503, code: "unreachable" });

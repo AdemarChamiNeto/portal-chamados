@@ -1,4 +1,4 @@
-import { ApiError, toQuery, type ChamadosApi } from "./contract";
+import { ApiError, toQuery, type ChamadosApi, type LoginResult } from "./contract";
 import type { Metrics, NewTicket, Page, Status, Ticket, TicketDetail, TicketFilters, User } from "../types";
 
 type Fetch = typeof fetch;
@@ -44,11 +44,36 @@ export class HttpChamadosApi implements ChamadosApi {
     return data as T;
   }
 
-  login(email: string, password: string) {
-    return this.request<{ token: string; user: User }>("POST", "/api/auth/login", { email, password });
+  async login(email: string, password: string): Promise<LoginResult> {
+    const r = await this.request<{ two_factor_required?: boolean; token?: string; user?: User; pending_token?: string }>(
+      "POST", "/api/auth/login", { email, password },
+    );
+    return r.two_factor_required
+      ? { twoFactorRequired: true, pendingToken: r.pending_token! }
+      : { twoFactorRequired: false, token: r.token!, user: r.user! };
+  }
+  async loginSecondFactor(pendingToken: string, code: string) {
+    const r = await this.request<{ token: string; user: User; recovery_codes_left: number }>(
+      "POST", "/api/auth/2fa", { pending_token: pendingToken, code },
+    );
+    return { token: r.token, user: r.user, recoveryCodesLeft: r.recovery_codes_left };
   }
   me() {
     return this.request<User>("GET", "/api/me");
+  }
+  twoFactorStatus() {
+    return this.request<{ enabled: boolean }>("GET", "/api/me/2fa");
+  }
+  async setupTwoFactor() {
+    const r = await this.request<{ secret: string; otpauth_url: string }>("POST", "/api/me/2fa/setup");
+    return { secret: r.secret, otpauthUrl: r.otpauth_url };
+  }
+  async enableTwoFactor(code: string) {
+    const r = await this.request<{ recovery_codes: string[] }>("POST", "/api/me/2fa/enable", { code });
+    return { recoveryCodes: r.recovery_codes };
+  }
+  async disableTwoFactor(password: string, code: string) {
+    await this.request<void>("POST", "/api/me/2fa/disable", { password, code });
   }
   listTickets(filters: TicketFilters) {
     const qs = toQuery(filters).toString();
