@@ -9,7 +9,7 @@ import { CATEGORY_LABEL, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL, formatDateTime }
 import { requireSession } from "@/lib/server/session";
 import { isStaff, type HistoryEntry } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Chamado" };
+export const metadata: Metadata = { title: "Chamado", robots: { index: false } }; // área logada: fora da busca
 
 function describe(h: HistoryEntry) {
   switch (h.type) {

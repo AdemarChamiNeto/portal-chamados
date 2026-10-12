@@ -153,3 +153,24 @@ test("2FA: ativar em Minha conta, sair e entrar com o código", async ({ page })
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.getByRole("heading", { name: "Chamados", level: 1 })).toBeVisible();
 });
+
+test("páginas e arquivos públicos abrem sem login; área logada fica fora da busca", async ({ page, request }) => {
+  for (const [path, type] of [
+    ["/robots.txt", "text/plain"], ["/sitemap.xml", "xml"], ["/llms.txt", "text/plain"],
+    ["/manifest.webmanifest", "manifest"], ["/opengraph-image.jpg", "image/jpeg"], ["/icon-192.png", "image/png"],
+  ] as const) {
+    const res = await request.get(path, { maxRedirects: 0 });
+    expect(res.status(), path).toBe(200);
+    expect(res.headers()["content-type"], path).toContain(type);
+  }
+  expect(await (await request.get("/robots.txt")).text()).toContain("Disallow: /chamados");
+
+  await page.goto("/privacidade");
+  await expect(page.getByRole("heading", { name: "Privacidade", level: 1 })).toBeVisible();
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", /opengraph-image/);
+  const ld = JSON.parse((await page.locator('script[type="application/ld+json"]').textContent())!);
+  expect(ld["@type"]).toBe("WebApplication");
+
+  await entrar(page, "diego@exemplo.com");
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+});

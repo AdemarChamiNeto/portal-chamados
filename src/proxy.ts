@@ -14,5 +14,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|api|_next/static|_next/image|favicon.ico|.*\\.(?:png|svg|ico)$).*)"],
+  // públicos: login, privacidade, API interna do Next e arquivos (robots.txt, sitemap.xml, llms.txt, manifest, imagens)
+  matcher: ["/((?!login|privacidade|api|_next/static|_next/image|.*\\.(?:png|svg|ico|jpg|txt|xml|webmanifest)$).*)"],
 };

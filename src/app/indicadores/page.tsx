@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/api/contract";
 import { requireSession } from "@/lib/server/session";
 import { CATEGORIES, PRIORITIES, STATUSES } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Indicadores" };
+export const metadata: Metadata = { title: "Indicadores", robots: { index: false } }; // área logada: fora da busca
 
 function Bars({ title, rows }: { title: string; rows: { label: string; value: number }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.value));

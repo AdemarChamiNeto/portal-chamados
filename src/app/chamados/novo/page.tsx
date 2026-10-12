@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { NewTicketForm } from "./NewTicketForm";
 
-export const metadata: Metadata = { title: "Abrir chamado" };
+export const metadata: Metadata = { title: "Abrir chamado", robots: { index: false } }; // área logada: fora da busca
 
 export default function NovoChamadoPage() {
   return (

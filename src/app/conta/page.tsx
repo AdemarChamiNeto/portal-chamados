@@ -4,7 +4,7 @@ import { ROLE_LABEL } from "@/lib/labels";
 import { requireSession } from "@/lib/server/session";
 import { TwoFactorPanel } from "./TwoFactorPanel";
 
-export const metadata: Metadata = { title: "Minha conta" };
+export const metadata: Metadata = { title: "Minha conta", robots: { index: false } }; // área logada: fora da busca
 
 async function Conta() {
   const { api, user } = await requireSession();

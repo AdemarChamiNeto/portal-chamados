@@ -1,0 +1,9 @@
+# Portal de Chamados
+
+> Portal de service desk em Next.js 16 (App Router, Server Actions, Cache Components) que funciona como BFF da API de Chamados em PHP. Na demonstração roda com dados fictícios em memória. Projeto de portfólio de Ademar Chami Neto.
+
+- [Entrar (demonstração)](https://portal-chamados-swart.vercel.app/login): a página lista os usuários fictícios e a senha de teste.
+- [Privacidade](https://portal-chamados-swart.vercel.app/privacidade)
+- Funcionalidades: fila com filtros na URL, abertura com prioridade pela matriz ITIL, SLA em horário comercial, comentários internos, indicadores e verificação em duas etapas opcional.
+- [Código-fonte do portal](https://github.com/AdemarChamiNeto/portal-chamados) · [API em PHP](https://github.com/AdemarChamiNeto/api-chamados)
+- [Portfólio do autor](https://ademarchamineto.github.io/)

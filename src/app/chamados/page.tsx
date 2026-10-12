@@ -8,7 +8,7 @@ import { parseFilters, withPage } from "@/lib/filters";
 import { requireSession } from "@/lib/server/session";
 import { isStaff } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Chamados" };
+export const metadata: Metadata = { title: "Chamados", robots: { index: false } }; // área logada: fora da busca
 
 type Search = Awaited<PageProps<"/chamados">["searchParams"]>;
 

@@ -20,6 +20,11 @@ Sem a API configurada, o portal roda em **modo demonstração**, com dados fict�
 - **Login** com o token da API guardado num cookie **httpOnly**. O JavaScript do navegador não tem acesso ao token, e todas as chamadas à API saem do servidor do Next.
 - **Verificação em duas etapas (opcional):** em "Minha conta", o usuário lê um QR code no app autenticador e recebe 10 códigos de recuperação. Depois disso o login pede o código, numa segunda tela.
 - **Freio contra força bruta:** depois de 5 erros de login ou de código em 15 min, o IP do usuário espera.
+- **Pronto para publicar:**
+  - ícones, manifest, Open Graph (imagem 1200×630), JSON-LD (`WebApplication`), `robots.txt`, sitemap, `llms.txt`, página 404 e página de privacidade;
+  - só login e privacidade são indexados (área logada com `noindex` e bloqueada no `robots.txt`);
+  - Lighthouse 97 em performance e 100 em acessibilidade, boas práticas e SEO.
+- **Estatísticas só com consentimento (LGPD):** GA4 e Clarity carregam apenas depois de "Aceitar". Os domínios deles só entram na CSP quando os IDs estão configurados.
 - **Fila de chamados:**
   - filtros por status, prioridade, categoria, responsável ("meus", "sem responsável") e "só atrasados";
   - busca, ordenação e paginação;
@@ -102,8 +107,8 @@ CHAMADOS_API_URL=http://localhost:8080 npm run dev
 ## Testes
 
 ```bash
-npm test             # 50 testes de unidade e componente (Vitest + Testing Library)
-npm run test:e2e     # 9 testes de ponta a ponta (Playwright, no build de produção)
+npm test             # 54 testes de unidade e componente (Vitest + Testing Library)
+npm run test:e2e     # 10 testes de ponta a ponta (Playwright, no build de produção)
 npm run lint && npm run typecheck
 ```
 
@@ -119,6 +124,7 @@ npm run lint && npm run typecheck
   - `voltar` malicioso no login não sai do site;
   - cabeçalhos de segurança nas respostas.
   - 2FA: ativar em "Minha conta", sair e entrar com o código (código errado é recusado).
+  - arquivos públicos (robots, sitemap, llms.txt, manifest, Open Graph) abrem sem login, e a área logada vem com `noindex`.
 
 O CI roda lint, typecheck, testes, build e o Playwright a cada push.
 
