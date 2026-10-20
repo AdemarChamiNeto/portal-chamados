@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { ApiIndisponivel } from "@/components/ApiIndisponivel";
+import { falhaDaApi } from "@/lib/api/falha";
 import { ROLE_LABEL } from "@/lib/labels";
 import { requireSession } from "@/lib/server/session";
 import { TwoFactorPanel } from "./TwoFactorPanel";
@@ -7,8 +9,16 @@ import { TwoFactorPanel } from "./TwoFactorPanel";
 export const metadata: Metadata = { title: "Minha conta", robots: { index: false } }; // área logada: fora da busca
 
 async function Conta() {
-  const { api, user } = await requireSession();
-  const { enabled } = await api.twoFactorStatus();
+  let user, enabled;
+  try {
+    const s = await requireSession();
+    user = s.user;
+    ({ enabled } = await s.api.twoFactorStatus());
+  } catch (e) {
+    const falha = falhaDaApi(e);
+    if (falha) return <ApiIndisponivel {...falha} />;
+    throw e;
+  }
   return (
     <div className="grid gap-4">
       <section className="card p-6" aria-labelledby="perfil-titulo">

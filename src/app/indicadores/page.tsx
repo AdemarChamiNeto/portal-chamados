@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { CATEGORY_LABEL, PRIORITY_LABEL, STATUS_LABEL } from "@/lib/labels";
+import { ApiIndisponivel } from "@/components/ApiIndisponivel";
 import { ApiError } from "@/lib/api/contract";
+import { falhaDaApi } from "@/lib/api/falha";
 import { requireSession } from "@/lib/server/session";
 import { CATEGORIES, PRIORITIES, STATUSES } from "@/lib/types";
 
@@ -28,14 +30,16 @@ function Bars({ title, rows }: { title: string; rows: { label: string; value: nu
 }
 
 async function Painel() {
-  const { api } = await requireSession();
   let m;
   try {
+    const { api } = await requireSession();
     m = await api.metrics(30);
   } catch (e) {
     if (e instanceof ApiError && e.status === 403) {
       return <p className="card p-6" role="alert">Indicadores são visíveis só para a equipe de atendimento.</p>;
     }
+    const falha = falhaDaApi(e);
+    if (falha) return <ApiIndisponivel {...falha} />;
     throw e;
   }
   const pct = (v: number | null) => (v === null ? "—" : `${v.toLocaleString("pt-BR")}%`);

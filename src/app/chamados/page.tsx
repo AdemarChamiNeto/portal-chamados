@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { TicketFilters } from "./TicketFilters";
+import { ApiIndisponivel } from "@/components/ApiIndisponivel";
 import { PriorityBadge, SlaIndicator, StatusBadge } from "@/components/Badges";
+import { falhaDaApi } from "@/lib/api/falha";
 import { CATEGORY_LABEL, formatDateTime } from "@/lib/labels";
 import { parseFilters, withPage } from "@/lib/filters";
 import { requireSession } from "@/lib/server/session";
@@ -14,8 +16,16 @@ type Search = Awaited<PageProps<"/chamados">["searchParams"]>;
 
 async function Fila({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams;
-  const { api, user } = await requireSession();
-  const page = await api.listTickets(parseFilters(sp));
+  let user, page;
+  try {
+    const s = await requireSession();
+    user = s.user;
+    page = await s.api.listTickets(parseFilters(sp));
+  } catch (e) {
+    const falha = falhaDaApi(e);
+    if (falha) return <ApiIndisponivel {...falha} />;
+    throw e;
+  }
   const staff = isStaff(user.role);
   const { meta } = page;
 

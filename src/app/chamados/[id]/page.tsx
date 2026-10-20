@@ -3,8 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { AssignForm, CommentForm, StatusForm } from "./TicketActions";
+import { ApiIndisponivel } from "@/components/ApiIndisponivel";
 import { PriorityBadge, SlaIndicator, StatusBadge } from "@/components/Badges";
 import { ApiError } from "@/lib/api/contract";
+import { falhaDaApi } from "@/lib/api/falha";
 import { CATEGORY_LABEL, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL, formatDateTime } from "@/lib/labels";
 import { requireSession } from "@/lib/server/session";
 import { isStaff, type HistoryEntry } from "@/lib/types";
@@ -24,13 +26,15 @@ async function Detalhe({ params, searchParams }: { params: Promise<{ id: string 
   const { id } = await params;
   const sp = await searchParams;
   if (!/^\d+$/.test(id)) notFound();
-  const { api, user } = await requireSession();
-
-  let t;
+  let user, t;
   try {
-    t = await api.getTicket(Number(id));
+    const s = await requireSession();
+    user = s.user;
+    t = await s.api.getTicket(Number(id));
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) notFound();
+    const falha = falhaDaApi(e);
+    if (falha) return <ApiIndisponivel {...falha} />;
     throw e;
   }
   const staff = isStaff(user.role);

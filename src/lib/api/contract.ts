@@ -2,6 +2,9 @@ import type { Metrics, NewTicket, Page, Status, Ticket, TicketDetail, TicketFilt
 
 /** Erro normalizado da API: {"error": {"code", "message", "details"?}}. */
 export class ApiError extends Error {
+  /** No 429: quanto esperar (do header Retry-After), em ms. */
+  retryAfterMs: number | null = null;
+
   constructor(
     readonly status: number,
     readonly code: string,

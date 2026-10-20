@@ -1,22 +1,92 @@
 import { ApiError, toQuery, type ChamadosApi, type LoginResult } from "./contract";
+import { backoff, CircuitBreaker, defaultResilience, retryAfterMs, type ResilienceOptions } from "./resilience";
 import type { Metrics, NewTicket, Page, Status, Ticket, TicketDetail, TicketFilters, User } from "../types";
 
 type Fetch = typeof fetch;
 
+// Um circuit breaker por API: compartilhado entre as requisições do servidor do Next.
+const breakers = new Map<string, CircuitBreaker>();
+const breakerFor = (baseUrl: string) => {
+  let b = breakers.get(baseUrl);
+  if (!b) breakers.set(baseUrl, (b = new CircuitBreaker()));
+  return b;
+};
+
+/** Falha que vale repetir num GET: pode passar sozinha. */
+const transient = (e: ApiError) =>
+  ["timeout", "unreachable", "invalid_response"].includes(e.code) || [502, 503, 504].includes(e.status);
+
 /**
  * Cliente da API real. Faz o papel de "interceptor": todo request passa por `request()`, que
- * põe o token, define timeout e transforma qualquer resposta de erro em ApiError.
- * Roda só no servidor — o token nunca chega ao navegador.
+ * põe o token, define timeout, aplica a política de resiliência e transforma qualquer resposta
+ * de erro em ApiError. Roda só no servidor — o token nunca chega ao navegador.
  */
 export class HttpChamadosApi implements ChamadosApi {
+  private readonly opts: ResilienceOptions;
+
   constructor(
     private readonly baseUrl: string,
     private readonly token: string | null = null,
     private readonly fetchFn: Fetch = fetch,
-    private readonly timeoutMs = 8000,
-  ) {}
+    options: Partial<ResilienceOptions> = {},
+  ) {
+    this.opts = { ...defaultResilience(options.breaker === undefined ? breakerFor(baseUrl) : options.breaker), ...options };
+  }
 
+  /**
+   * O circuit breaker fica por fora das novas tentativas: conta o resultado final de cada
+   * requisição, não cada tentativa (contando tentativas, uma API com 50% de erro abria o
+   * circuito à toa e recusava requisições que teriam dado certo — a medição mostrou isso).
+   */
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const breaker = this.opts.breaker;
+    const wait = breaker?.check() ?? null;
+    if (wait !== null) {
+      throw new ApiError(503, "circuit_open", `A API está instável. Tente de novo em ${Math.ceil(wait / 1000)} s.`);
+    }
+    try {
+      const data = await this.withRetries<T>(method, path, body);
+      breaker?.success();
+      return data;
+    } catch (e) {
+      // 4xx é culpa de quem chamou e 429 é limite de uso: nenhum dos dois é API doente
+      if (e instanceof ApiError && e.status >= 500) breaker?.failure();
+      else if (e instanceof ApiError && e.status !== 429) breaker?.success();
+      throw e;
+    }
+  }
+
+  private async withRetries<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const o = this.opts;
+    const idempotent = method === "GET" || method === "HEAD";
+    const deadline = o.now() + o.budgetMs;
+
+    for (let attempt = 0; ; attempt++) {
+      const timeoutMs = idempotent ? Math.min(o.readTimeoutMs, Math.max(1, deadline - o.now())) : o.writeTimeoutMs;
+      let error: ApiError;
+      try {
+        return await this.once<T>(method, path, body, timeoutMs);
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e;
+        error = e;
+      }
+
+      const canRetry = idempotent && attempt < o.retries;
+      if (error.status === 429) {
+        const ms = error.retryAfterMs ?? 1000;
+        if (!canRetry || ms > o.maxRetryAfterMs || o.now() + ms >= deadline) throw error;
+        await o.sleep(ms);
+        continue;
+      }
+      if (!canRetry || !transient(error)) throw error;
+      const delay = backoff(attempt, o);
+      if (o.now() + delay + 500 >= deadline) throw error; // não sobra tempo para outra tentativa útil
+      await o.sleep(delay);
+    }
+  }
+
+  /** Uma tentativa: chama a API e normaliza qualquer problema em ApiError. */
+  private async once<T>(method: string, path: string, body: unknown, timeoutMs: number): Promise<T> {
     let res: Response;
     try {
       res = await this.fetchFn(new URL(path, this.baseUrl), {
@@ -28,7 +98,7 @@ export class HttpChamadosApi implements ChamadosApi {
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         cache: "no-store",
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
       const timeout = e instanceof Error && e.name === "TimeoutError";
@@ -36,11 +106,19 @@ export class HttpChamadosApi implements ChamadosApi {
     }
 
     if (res.status === 204) return undefined as T;
-    const data = await res.json().catch(() => null);
+    const isJson = (res.headers.get("content-type") ?? "").includes("json");
+    const data = isJson ? await res.json().catch(() => undefined) : undefined;
+
     if (!res.ok) {
       const err = data?.error;
-      throw new ApiError(res.status, err?.code ?? "http_error", err?.message ?? `Erro ${res.status} na API`, err?.details ?? {});
+      const apiError = err
+        ? new ApiError(res.status, err.code ?? "http_error", err.message ?? `Erro ${res.status} na API`, err.details ?? {})
+        : new ApiError(res.status, "http_error", isJson ? `Erro ${res.status} na API` : `A API (ou um proxy na frente dela) devolveu uma página de erro ${res.status}.`);
+      if (res.status === 429) apiError.retryAfterMs = retryAfterMs(res.headers.get("retry-after"), this.opts.now());
+      throw apiError;
     }
+    // 200 com HTML (ou JSON quebrado): antes virava "sucesso" com dados nulos
+    if (data === undefined) throw new ApiError(502, "invalid_response", "A API respondeu algo que não é JSON (provavelmente a página de erro de um proxy).");
     return data as T;
   }
 

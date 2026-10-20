@@ -1,12 +1,27 @@
 import Link from "next/link";
 import { logout } from "@/app/actions";
+import { falhaDaApi } from "@/lib/api/falha";
 import { ROLE_LABEL } from "@/lib/labels";
 import { isDemo } from "@/lib/server/backend";
 import { getSession } from "@/lib/server/session";
 import { isStaff } from "@/lib/types";
 
 export async function UserMenu() {
-  const session = await getSession();
+  let session;
+  try {
+    session = await getSession();
+  } catch (e) {
+    // API fora: o menu fica no layout e não pode derrubar a página inteira; o aviso aparece no conteúdo
+    if (!falhaDaApi(e)) throw e;
+    return (
+      <nav aria-label="Menu do usuário" className="flex flex-wrap items-center gap-3 text-sm">
+        <Link href="/chamados" className="hover:underline">Chamados</Link>
+        <form action={logout}>
+          <button type="submit" className="btn">Sair</button>
+        </form>
+      </nav>
+    );
+  }
   if (!session) return null;
   const { user } = session;
   return (
