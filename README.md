@@ -60,6 +60,7 @@ src/
 tests/
   unit/                    Vitest + Testing Library
   e2e/                     Playwright contra o build de produção (modo demonstração)
+  e2e-api/                 Playwright contra a API PHP de verdade (MySQL em container)
 ```
 
 ### Decisões
@@ -99,6 +100,7 @@ tests/
 - **Modo demonstração honesto.**
   - Os tokens da demo são assinados com HMAC (chave aleatória do processo): editar o cookie não transforma ninguém em admin.
   - O 2FA da demo segue as mesmas regras da API (código não reutilizável, recuperação de uso único) e tem teste.
+- **Demo na Vercel em modo demonstração, integração garantida no CI.** A API poderia ficar no plano grátis do Render, mas ele dorme: o primeiro visitante esperaria uns 30 s ou veria o aviso de API fora do ar. Então a demo pública roda sozinha, e um job do CI sobe a API real com MySQL e passa o portal por ela a cada push. Os testes criam os próprios dados, porque o seed da API não é igual ao da demo.
 - **Voltar depois do login mesmo sem JavaScript carregado.** O campo `voltar` é renderizado no navegador. Se o formulário for enviado antes disso, a action lê o `?voltar=` da página de login (`Referer`), sempre passando pelo `safeReturn`.
 
 ## Rodando
@@ -116,7 +118,7 @@ Os usuários de demonstração (senha `senha-demo-123`) aparecem na tela de logi
 | `bruno@exemplo.com`, `carla@exemplo.com` | técnicos |
 | `diego@exemplo.com`, `elisa@exemplo.com` | solicitantes |
 
-**Com a API real:** suba a [api-chamados](https://github.com/AdemarChamiNeto/api-chamados) (por exemplo, `php -S localhost:8080 -t public public/index.php` depois de `php bin/seed.php`) e rode:
+**Com a API real:** suba a [api-chamados](https://github.com/AdemarChamiNeto/api-chamados) (`docker compose up -d` na pasta dela: MySQL e dados de exemplo em `http://localhost:8080`) e rode:
 
 ```bash
 CHAMADOS_API_URL=http://localhost:8080 npm run dev
@@ -127,6 +129,7 @@ CHAMADOS_API_URL=http://localhost:8080 npm run dev
 ```bash
 npm test             # 71 testes de unidade e componente (Vitest + Testing Library)
 npm run test:e2e     # 10 testes de ponta a ponta (Playwright, no build de produção)
+npm run test:e2e:api # 4 testes contra a API PHP de verdade (suba a API antes)
 npm run lint && npm run typecheck
 ```
 
@@ -144,8 +147,9 @@ npm run lint && npm run typecheck
   - cabeçalhos de segurança nas respostas.
   - 2FA: ativar em "Minha conta", sair e entrar com o código (código errado é recusado).
   - arquivos públicos (robots, sitemap, llms.txt, manifest, Open Graph) abrem sem login, e a área logada vem com `noindex`.
+- **E2E com a API real:** senha errada; chamado aberto pelo solicitante, assumido e atendido pelo técnico, com o comentário interno escondido do solicitante e 404 para outro solicitante; token recusado pela API volta para o login; 2FA com código repetido recusado e código de recuperação de uso único.
 
-O CI roda lint, typecheck, testes, build e o Playwright a cada push.
+O CI roda lint, typecheck, testes, build e o Playwright a cada push, nos dois modos: demonstração e com a API real (clona a api-chamados e sobe com `docker compose`).
 
 ## Deploy na Vercel
 
